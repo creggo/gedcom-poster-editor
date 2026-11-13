@@ -1,0 +1,355 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GEDCOM Poster Editor</title>
+<meta name="description" content="Turn a GEDCOM family tree into a poster, in your browser.">
+<meta name="theme-color" content="#164e53">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%231f6e76'/%3E%3Ccircle cx='16' cy='12' r='7' fill='%23879c40'/%3E%3Crect x='14.5' y='16' width='3' height='10' fill='%23fff'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg:#f6f9f8; --panel:#ffffff; --ink:#14282c; --muted:#5d7377; --faint:#93a6a9; --line:#e5ecea; --line2:#d6e0de;
+    --accent:#1f6e76; --accent-d:#164e53; --accent-soft:#e7f2f1; --olive:#879c40; --ok:#4f7a1f; --warn:#c8402a;
+    --r:12px; --shadow:0 1px 2px rgba(14,45,50,.05), 0 8px 24px rgba(14,45,50,.08); --shadow-s:0 1px 2px rgba(14,45,50,.06), 0 2px 8px rgba(14,45,50,.06);
+    --font:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",sans-serif;
+  }
+  * { box-sizing:border-box }
+  html,body { height:100% }
+  body { margin:0; font:14px/1.45 var(--font); color:var(--ink); background:var(--bg); overflow:hidden; -webkit-font-smoothing:antialiased }
+  #app { display:grid; grid-template-rows:60px 1fr; height:100vh }
+
+  /* ---------- top bar ---------- */
+  #top { display:flex; align-items:center; gap:14px; padding:0 18px; background:var(--panel); border-bottom:1px solid var(--line); z-index:4 }
+  #logo { font:700 17px var(--font); color:var(--accent-d); letter-spacing:-.01em }
+  #top .tag { color:var(--muted); font-size:12.5px; padding-left:14px; border-left:1px solid var(--line); margin-left:2px }
+  #top .grow { flex:1 }
+
+  /* ---------- rail + panel ---------- */
+  #shell { display:flex; min-height:0 }
+  #tabs { width:78px; flex:none; background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; align-items:center; gap:4px; padding:12px 0; z-index:3 }
+  #tabs button { width:62px; padding:9px 0 7px; border:0; background:none; border-radius:12px; color:var(--muted); font:500 11px var(--font); display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer; transition:background .12s,color .12s }
+  #tabs button svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round }
+  #tabs button:hover:not(:disabled) { background:#eef4f2; color:var(--ink) }
+  #tabs button.on { background:var(--accent-soft); color:var(--accent-d) }
+  #tabs button:disabled { opacity:.38; cursor:default; background:none; border:0; color:var(--muted) }
+  #panel { width:340px; flex:none; background:var(--panel); border-right:1px solid var(--line); overflow:auto; position:relative; z-index:2 }
+  .tab { display:none; padding:20px 20px 40px }
+  .tab.on { display:block }
+  .tab > h2 { margin:0; font:700 19px var(--font); letter-spacing:-.015em }
+  .tab > .lead { margin:4px 0 16px; color:var(--muted); font-size:13px }
+
+  /* ---------- journey: step bar and Back / Next ---------- */
+  #stepbar { position:sticky; top:0; z-index:3; background:var(--panel); padding:14px 20px 12px; border-bottom:1px solid var(--line) }
+  #stepbar .lab { display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px; font-weight:600; color:var(--faint); text-transform:uppercase; letter-spacing:.07em }
+  #stepbar .lab b { color:var(--accent-d) }
+  #stepbar .bar { display:grid; grid-template-columns:repeat(5,1fr); gap:5px; margin-top:8px }
+  #stepbar .bar i { height:5px; border-radius:3px; background:var(--line) } #stepbar .bar i.done { background:var(--olive) } #stepbar .bar i.cur { background:var(--accent) }
+  #stepnav { position:sticky; bottom:0; z-index:3; display:flex; gap:10px; padding:12px 20px 14px; background:linear-gradient(180deg,rgba(255,255,255,0),#fff 28%); border-top:1px solid var(--line) }
+  #stepnav button { flex:1 } #stepnav #stepBack { flex:0 0 auto }
+  #stepnav .hintline { position:absolute; left:20px; right:20px; top:-26px; text-align:center; font-size:12px; color:var(--muted) }
+  /* ---------- sections ---------- */
+  details.sec { border:1px solid var(--line); border-radius:var(--r); margin:0 0 12px; background:var(--panel); box-shadow:var(--shadow-s) }
+  details.sec > summary { list-style:none; display:flex; align-items:center; gap:10px; padding:13px 14px; cursor:pointer; font-weight:600; font-size:13.5px; border-radius:var(--r); user-select:none }
+  details.sec > summary::-webkit-details-marker { display:none }
+  details.sec > summary .ic { width:26px; height:26px; border-radius:8px; background:var(--accent-soft); color:var(--accent-d); display:grid; place-items:center; flex:none }
+  details.sec > summary .ic svg { width:15px; height:15px; stroke:currentColor; fill:none; stroke-width:1.9; stroke-linecap:round; stroke-linejoin:round }
+  details.sec > summary .chev { margin-left:auto; width:16px; height:16px; stroke:var(--faint); fill:none; stroke-width:2; transition:transform .15s }
+  details.sec[open] > summary .chev { transform:rotate(180deg) }
+  details.sec > summary:hover { background:#f9fbfa }
+  details.sec > .body { padding:2px 14px 16px }
+  .group { margin:0 0 18px }
+
+  /* ---------- controls ---------- */
+  label.f { display:block; margin:12px 0 5px; font-size:12.5px; font-weight:500; color:var(--muted) }
+  input[type=text], select, input[type=number] { width:100%; padding:9px 11px; font:inherit; color:var(--ink); background:#fff; border:1px solid var(--line2); border-radius:9px; transition:border-color .12s, box-shadow .12s }
+  select { appearance:none; background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa6b8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 11px center; padding-right:30px }
+  input[type=text]:focus, select:focus, input[type=number]:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(31,110,118,.2) }
+  input[type=text]::placeholder { color:var(--faint) }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px }
+  .rng { margin:12px 0 4px } .rng .rl { display:flex; justify-content:space-between; align-items:baseline; font-size:12.5px; font-weight:500; color:var(--muted); margin-bottom:6px }
+  .rng .rl span:last-child { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; background:#eef3f1; border-radius:6px; padding:1px 7px; font-size:12px; min-width:34px; text-align:center }
+  input[type=range] { width:100%; accent-color:var(--accent); height:20px; margin:0 }
+  .check { display:flex; gap:11px; align-items:flex-start; margin:11px 0; cursor:pointer; font-size:13.5px }
+  .check input { margin-top:3px; accent-color:var(--accent); width:16px; height:16px; flex:none }
+  .hint { font-size:12.5px; color:var(--muted); margin:5px 0 8px; line-height:1.5 }
+  .hint b { color:var(--ink); font-weight:600 }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:10px 0 }
+  button { font:600 13px var(--font); padding:9px 14px; border:1px solid var(--accent); background:var(--accent); color:#fff; border-radius:9px; cursor:pointer; transition:background .12s, border-color .12s, box-shadow .12s }
+  button:hover:not(:disabled) { background:var(--accent-d); border-color:var(--accent-d) }
+  button.alt { background:#fff; color:var(--ink); border-color:var(--line2) }
+  button.alt:hover:not(:disabled) { background:#f4f8f7; border-color:#c3d3cf }
+  button.sm { padding:6px 10px; font-size:12px; border-radius:8px }
+  button:disabled { opacity:.5; cursor:default; background:#f1f6f4; color:var(--faint); border-color:var(--line) }
+  .vh { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; overflow:hidden }
+  /* tiles and segments (they drive hidden selects) */
+  .tiles { display:grid; grid-template-columns:repeat(3,1fr); gap:8px }
+  .tile { padding:10px 4px 8px; background:#fff; color:var(--muted); border:1.5px solid var(--line2); border-radius:11px; display:flex; flex-direction:column; align-items:center; gap:6px; font:500 11.5px var(--font); line-height:1.2; text-align:center }
+  .tile svg { width:44px; height:34px; stroke:currentColor; fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round }
+  .tile:hover:not(:disabled) { background:#f9fcfb; border-color:#bcd0cc; color:var(--ink) }
+  .tile.on, .tile.on:hover:not(:disabled) { border-color:var(--accent); background:var(--accent-soft); color:var(--accent-d) }
+  .seg { display:grid; grid-template-columns:repeat(4,1fr); gap:3px; background:#eef4f2; padding:3px; border-radius:10px }
+  .seg button { background:none; border:0; color:var(--muted); padding:7px 0; border-radius:8px; font:600 12px var(--font) }
+  .seg button:hover:not(:disabled) { background:#e2ece9; color:var(--ink) }
+  .seg button.on, .seg button.on:hover:not(:disabled) { background:#fff; color:var(--accent-d); box-shadow:var(--shadow-s) }
+  .looks { display:grid; grid-template-columns:repeat(3,1fr); gap:9px }
+  .looks button { padding:0; height:62px; border:2px solid #fff; outline:1px solid var(--line2); background:var(--bg); border-radius:12px; overflow:hidden; position:relative; font-size:11px; color:var(--ink); font-weight:600 }
+  .looks button:hover:not(:disabled) { outline-color:#aac5c0; border-color:#fff }
+  .looks button span { position:absolute; left:0; right:0; bottom:0; padding:3px 0; background:rgba(255,255,255,.88) }
+  .looks button.on { outline:2px solid var(--accent); border-color:#fff }
+  .swatches { display:grid; grid-template-columns:repeat(3,1fr); gap:11px 10px; margin-top:14px }
+  .swatch { display:flex; flex-direction:column; gap:5px; font-size:11.5px; color:var(--muted); font-weight:500 }
+  .swatch input { width:100%; height:34px; padding:2px; border:1px solid var(--line2); border-radius:9px; background:#fff; cursor:pointer }
+  .drop { border:2px dashed #c9d9d6; border-radius:14px; padding:20px 14px; text-align:center; background:#fafdfc; color:var(--muted); transition:border-color .12s, background .12s }
+  .drop.over, .drop:hover { border-color:var(--accent); background:var(--accent-soft) }
+  .drop b { color:var(--ink); display:block; font-size:14px; margin:6px 0 2px }
+  .drop svg { width:30px; height:30px; stroke:var(--accent); fill:none; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round }
+  .drop input[type=file] { margin-top:10px; font-size:12px; max-width:100%; color:var(--muted) }
+  input[type=file]::file-selector-button { font:600 12px var(--font); padding:7px 12px; border:1px solid var(--line2); background:#fff; color:var(--ink); border-radius:8px; margin-right:10px; cursor:pointer }
+  input[type=file]::file-selector-button:hover { background:#f4f8f7 }
+  #info { margin-top:12px; font-size:12.5px; color:var(--muted); background:#f4f8f7; border:1px solid var(--line); border-radius:10px; padding:11px 13px; line-height:1.55 }
+  #info b { color:var(--ink) } #info .warn { color:var(--warn); font-weight:600 }
+  /* ---------- inspector (built by the app) ---------- */
+  .card-i { background:#f6faf9; border:1px solid var(--line); border-radius:12px; padding:14px; margin:10px 0 }
+  .card-i h4 { margin:0 0 2px; font:700 15px var(--font) }
+  .card-i .sub { font-size:12.5px; color:var(--muted); margin-bottom:8px }
+  .pv-row { display:flex; gap:12px; align-items:center }
+  .pv { width:68px; height:68px; border-radius:50%; object-fit:cover; border:3px solid #fff; box-shadow:var(--shadow-s); background:var(--line); flex:none }
+  .xy { display:grid; grid-template-columns:1fr 1fr; gap:8px }
+  .xy label { font-size:11.5px; color:var(--muted); font-weight:500 }
+  .align { display:grid; grid-template-columns:repeat(4,1fr); gap:6px }
+  .empty-i { color:var(--muted); font-size:13px; padding:22px 8px; text-align:center; background:#f8fbfa; border:1px dashed var(--line2); border-radius:12px }
+
+  /* ---------- canvas ---------- */
+  #main { position:relative; min-width:0; flex:1 }
+  #stage { position:absolute; inset:0; overflow:auto; padding:32px; cursor:grab; background:#f1f6f4 radial-gradient(#d3e0dc 1.1px, transparent 1.2px) 0 0/24px 24px; background-attachment:local }
+  #stage svg { display:block; margin:0 auto; box-shadow:0 2px 6px rgba(14,45,50,.08), 0 18px 48px rgba(14,45,50,.14); border-radius:2px }
+  #stage.edit { user-select:none } #stage.edit .card { cursor:grab } #stage.drag, #stage.drag .card { cursor:grabbing } #stage.pan { cursor:grabbing }
+  #stage.over { outline:3px dashed var(--accent); outline-offset:-10px }
+  #empty { max-width:470px; margin:min(12vh,110px) auto 0; text-align:center; background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:36px 32px 30px; box-shadow:var(--shadow); cursor:default }
+  #empty { max-width:560px; text-align:left } #empty .badge, #empty h1, #empty > p, #empty .cta { text-align:center }
+  #empty ol.how { list-style:none; margin:20px 0 6px; padding:0; display:grid; gap:12px }
+  #empty ol.how li { display:grid; grid-template-columns:34px 1fr; gap:12px; align-items:start; font-size:13.5px; color:var(--muted); line-height:1.5 }
+  #empty ol.how li b { color:var(--ink); display:block; font-size:14px }
+  #empty ol.how .n { width:30px; height:30px; border-radius:50%; background:var(--accent-soft); color:var(--accent-d); font-weight:700; display:grid; place-items:center; font-size:13.5px }
+  #empty .cta { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:20px 0 4px }
+  #empty details { margin-top:12px; border-top:1px solid var(--line); padding-top:12px; font-size:13px; color:var(--muted) }
+  #empty details summary { cursor:pointer; font-weight:600; color:var(--ink) } #empty details p { margin:8px 0 0; line-height:1.55 }
+  #empty .priv { margin-top:14px; display:flex; gap:8px; align-items:center; justify-content:center; font-size:12.5px; color:var(--ok); font-weight:600 }
+  #empty h1 { margin:14px 0 6px; font:700 25px var(--font); letter-spacing:-.02em }
+  #empty p { margin:0 auto 20px; color:var(--muted); font-size:14px; max-width:340px; line-height:1.55 }
+  #empty .badge { width:84px; height:84px; margin:0 auto; display:grid; place-items:center }
+  #empty .badge img { width:84px; height:auto }
+  #empty .badge svg { width:32px; height:32px; stroke:var(--accent-d); fill:none; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round }
+  #toolbar { position:absolute; left:50%; bottom:22px; transform:translateX(-50%); display:flex; gap:4px; align-items:center; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:14px; padding:6px 8px; box-shadow:var(--shadow); z-index:5; backdrop-filter:blur(6px) }
+  #toolbar[hidden] { display:none }
+  #toolbar .sep { width:1px; height:22px; background:var(--line); margin:0 5px }
+  #toolbar input[type=range] { width:120px }
+  #toolbar span { font-size:12px; color:var(--muted); min-width:40px; text-align:center; font-variant-numeric:tabular-nums; font-weight:600 }
+  #toolbar button { background:none; border:0; color:var(--ink); padding:7px 10px; border-radius:9px; white-space:nowrap }
+  #toolbar button:hover:not(:disabled) { background:#eef4f2 }
+  #toolbar button:disabled { background:none; border:0; color:#a3afc0; opacity:1 }
+  #marquee { position:fixed; border:1.5px dashed var(--accent); background:rgba(31,110,118,.1); pointer-events:none; z-index:6 }
+  #toast { position:fixed; left:50%; top:74px; transform:translateX(-50%); background:#1d2433; color:#fff; padding:11px 18px; border-radius:12px; font-size:13px; z-index:30; box-shadow:var(--shadow); max-width:min(560px,92vw) }
+  #toast[hidden] { display:none } #toast a { color:#ffdd55; font-weight:600; margin-left:6px }
+  kbd { font:600 11px var(--font); background:#fff; border:1px solid var(--line2); border-bottom-width:2px; border-radius:5px; padding:1px 6px }
+  .keys td { padding:5px 12px 5px 0; font-size:13px; vertical-align:top }
+  /* ---------- dialogs ---------- */
+  #modal { position:fixed; inset:0; background:rgba(29,36,51,.38); backdrop-filter:blur(3px); display:flex; align-items:center; justify-content:center; z-index:20 }
+  #modal[hidden] { display:none }
+  #modal .box { background:var(--panel); border-radius:18px; padding:24px; width:min(560px,92vw); max-height:88vh; overflow:auto; box-shadow:0 24px 64px rgba(14,45,50,.28) }
+  #modal h2 { margin:0 0 10px; font:700 19px var(--font); letter-spacing:-.01em }
+  #modal .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; justify-content:flex-end }
+  #modal canvas { display:block; margin:0 auto; border:1px solid var(--line); border-radius:12px; cursor:move; touch-action:none; background:#eee }
+  #modal .pv2 { width:120px; height:120px; object-fit:cover; border-radius:50%; border:3px solid #fff; box-shadow:var(--shadow-s); display:block; margin:0 auto 8px }
+  #modal .urow { display:flex; gap:6px; align-items:center; margin:7px 0 }
+  #modal .urow span { flex:1; font-size:12px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap }
+  #modal .urow input { width:210px }
+  #sheet { display:none }
+  @media (max-width:900px) { #panel { width:290px } #top .tag { display:none } }
+  @media print {
+    body { background:#fff; overflow:visible; height:auto }
+    #app { display:block; height:auto }
+    #top, #shell { display:none }
+    #sheet { display:block; position:relative; overflow:hidden; page-break-after:avoid }
+    #sheet svg { position:absolute }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <strong id="logo">GEDCOM Poster Editor</strong>
+    <span class="tag">Family tree poster maker</span>
+    <div class="grow"></div>
+    <button id="topDownload" disabled>Download</button>
+  </header>
+
+  <div id="shell">
+    <nav id="tabs" aria-label="Tools">
+      <button data-tab="tree" class="on"><svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="2.5"/><circle cx="5.5" cy="18" r="2.5"/><circle cx="18.5" cy="18" r="2.5"/><path d="M12 7.5v4M12 11.5H5.5v4M12 11.5h6.5v4"/></svg>Tree</button>
+      <button data-tab="style" disabled><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7" r="1"/><circle cx="15" cy="7.5" r="1"/></svg>Style</button>
+      <button data-tab="photos" disabled><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 8"/></svg>Photos</button>
+      <button data-tab="edit" disabled><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6.2 1.6L10 19z"/></svg>Edit</button>
+      <button data-tab="export" disabled><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/></svg>Download</button>
+    </nav>
+
+    <aside id="panel">
+      <div id="stepbar"><div class="lab"><span id="stepName">Step 1 · Your tree</span><b id="stepCount">1 of 5</b></div><div class="bar"><i class="cur"></i><i></i><i></i><i></i><i></i></div></div>
+      <!-- ============ TREE ============ -->
+      <section class="tab on" id="tab-tree">
+        <h2>Your tree</h2><p class="lead">Start with a family file, then choose who sits at the centre.</p>
+        <div class="group">
+          <div class="drop" id="drop"><svg viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg><b>Drop a GEDCOM file</b>or choose one below<br><input id="file" type="file" accept=".ged,.gedcom,text/plain"></div>
+          <div class="hint">Export a <b>.ged</b> file from your family tree website or software. It stays in your browser: nothing is uploaded.</div>
+        </div>
+        <div id="controls" hidden>
+          <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></span>Centre of the tree<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+            <input id="root" type="text" list="people" placeholder="Search for a person…" autocomplete="off"><datalist id="people"></datalist>
+            <label class="f">Generations back</label><select id="gens"></select>
+          </div></details>
+          <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M15 15a5 5 0 0 1 6 5"/></svg></span>Who to include<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+            <label class="check"><input id="siblings" type="checkbox" checked><span>Brothers and sisters of each person</span></label>
+            <label class="check"><input id="relatives" type="checkbox"><span>Their spouses and descendants<br><span class="hint">Cousins and their families, as far as the centre person’s generation.</span></span></label>
+            <label class="check"><input id="hideLiving" type="checkbox" checked><span>Hide details of living people<br><span class="hint">No dates, places or photos for anyone who may still be alive.</span></span></label>
+          </div></details>
+        </div>
+      </section>
+
+      <!-- ============ STYLE ============ -->
+      <section class="tab" id="tab-style">
+        <h2>Style</h2><p class="lead">Pick a design, then make it yours.</p>
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>Design<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="tiles">
+            <button type="button" class="tile alt" data-sel="design" data-v="tree"><svg viewBox="0 0 48 36"><path d="M24 33V20M24 20c-6 0-10-4-10-10M24 20c6 0 10-4 10-10M14 10c0-4 3-7 10-7s10 3 10 7"/><circle cx="14" cy="9" r="2"/><circle cx="34" cy="9" r="2"/><circle cx="24" cy="4" r="2"/></svg>Heritage tree</button>
+            <button type="button" class="tile alt" data-sel="design" data-v="classic"><svg viewBox="0 0 48 36"><circle cx="6" cy="18" r="2.5"/><circle cx="21" cy="9" r="2.5"/><circle cx="21" cy="27" r="2.5"/><circle cx="40" cy="5" r="2.5"/><circle cx="40" cy="13" r="2.5"/><circle cx="40" cy="23" r="2.5"/><circle cx="40" cy="31" r="2.5"/><path d="M8 18h6V9h5M14 18v9h5M23 9h6V5h9M29 9v4h9M23 27h6v-4h9M29 27v4h9"/></svg>Chart: columns</button>
+            <button type="button" class="tile alt" data-sel="design" data-v="classic-up"><svg viewBox="0 0 48 36"><circle cx="24" cy="31" r="2.5"/><circle cx="12" cy="18" r="2.5"/><circle cx="36" cy="18" r="2.5"/><circle cx="6" cy="5" r="2.5"/><circle cx="18" cy="5" r="2.5"/><circle cx="30" cy="5" r="2.5"/><circle cx="42" cy="5" r="2.5"/><path d="M24 28v-4h-12v-3M24 24h12v-3M12 15v-4H6V7M12 11h6V7M36 15v-4h-6V7M36 11h6V7"/></svg>Chart: rows</button>
+          </div>
+          <select id="design" class="vh" tabindex="-1" aria-hidden="true"><option value="tree">Heritage tree</option><option value="classic">Chart: columns</option><option value="classic-up">Chart: rows</option></select>
+          <label class="f">Card style (charts)</label>
+          <select id="card"><option value="auto">Auto: largest that stays readable</option><option value="full">Full: photo, dates and places</option><option value="compact">Compact: photo, name, years</option><option value="mini">Mini: name and years</option></select>
+        </div></details>
+
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.3-.3-.4-.5-.8-.5-1.3 0-1 .8-1.8 1.8-1.8H17a4 4 0 0 0 4-4C21 6.5 17 3 12 3z"/></svg></span>Look and colours<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="looks" id="looks"></div>
+          <div class="swatches" id="swatches"></div>
+        </div></details>
+
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></span>Size and spacing<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="rng"><div class="rl"><span>People: picture and text</span><span id="nodeScaleVal"></span></div><input id="nodeScale" type="range" min="50" max="220" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Space between generations</span><span id="genGapVal"></span></div><input id="genGap" type="range" min="20" max="150" step="5" value="50"></div>
+          <div class="rng"><div class="rl"><span>Whole tree within the canvas</span><span id="treeScaleVal"></span></div><input id="treeScale" type="range" min="40" max="160" step="5" value="100"></div>
+          <div class="hint">Above 100% the tree grows toward the frame and can pass it. The readable-text check on the Download tab follows these.</div>
+        </div></details>
+
+        <details class="sec" id="treeOnly"><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 21v-6"/><path d="M12 15c-4 0-7-3-7-7 4 0 7 3 7 7z"/><path d="M12 15c4 0 7-3 7-7-4 0-7 3-7 7z"/></svg></span>Leaves and branches<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <label class="check"><input id="detail" type="checkbox" checked><span>Show leaves and twigs on screen<br><span class="hint">Turn off if the page feels slow or uses a lot of memory: the screen shows just the branches. Leaves and twigs are still drawn in full for every download.</span></span></label>
+          <div class="rng"><div class="rl"><span>Leaf density</span><span id="leavesVal"></span></div><input id="leaves" type="range" min="0" max="200" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Leaf size</span><span id="leafSizeVal"></span></div><input id="leafSize" type="range" min="50" max="180" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Twig density</span><span id="twigsVal"></span></div><input id="twigs" type="range" min="0" max="200" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Branch thickness</span><span id="woodVal"></span></div><input id="wood" type="range" min="50" max="200" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Root winding</span><span id="windVal"></span></div><input id="wind" type="range" min="0" max="200" step="5" value="100"></div>
+          <div class="rng"><div class="rl"><span>Branch curve</span><span id="curveVal"></span></div><input id="curve" type="range" min="0" max="2" step="0.05" value="1"></div>
+        </div></details>
+
+        <details class="sec"><summary><span class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><rect x="7" y="7" width="10" height="10" rx="1"/></svg></span>Title and border<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <input id="title" type="text" placeholder="Title, e.g. The Example Family">
+          <label class="f">Border</label>
+          <div class="seg">
+            <button type="button" class="alt" data-sel="border" data-v="double">Double</button><button type="button" class="alt" data-sel="border" data-v="ornate">Ornate</button><button type="button" class="alt" data-sel="border" data-v="thin">Single</button><button type="button" class="alt" data-sel="border" data-v="none">None</button>
+          </div>
+          <select id="border" class="vh" tabindex="-1" aria-hidden="true"><option value="double">Double line</option><option value="ornate">Ornate corners</option><option value="thin">Single line</option><option value="none">None</option></select>
+        </div></details>
+
+        <details class="sec"><summary><span class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>Aged finish<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="rng"><div class="rl"><span>How old</span><span id="ageVal"></span></div><input id="age" type="range" min="0" max="100" step="1" value="0"></div>
+          <div id="ageOpts">
+            <label class="check"><input id="ag-paper" type="checkbox"><span>Paper texture</span></label>
+            <label class="check"><input id="ag-grain" type="checkbox"><span>Fine grain</span></label>
+            <label class="check"><input id="ag-sepia" type="checkbox"><span>Sepia tint</span></label>
+            <label class="check"><input id="ag-vignette" type="checkbox"><span>Burnt edges</span></label>
+            <label class="check"><input id="ag-stains" type="checkbox"><span>Stains and spots</span></label>
+            <label class="check"><input id="ag-creases" type="checkbox"><span>Fold creases</span></label>
+            <label class="check"><input id="ag-photos" type="checkbox"><span>Fade photos to sepia</span></label>
+          </div>
+        </div></details>
+      </section>
+
+      <!-- ============ PHOTOS ============ -->
+      <section class="tab" id="tab-photos">
+        <h2>Photos</h2><p class="lead">Faces make a family tree feel alive.</p>
+        <div class="group">
+          <div class="drop"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-8 8"/></svg><b>Add photos</b>a zip, or several images
+            <div class="row" style="justify-content:center"><button id="addphotos">Choose files…</button></div><input id="photos" type="file" accept=".zip,image/*" multiple hidden></div>
+          <div class="hint">You can also drop them straight onto the chart. Files are matched to people by the photo name in your GEDCOM, by person ID (<b>I123.jpg</b>) or by name. Anything left over, you can attach by hand.</div>
+          <div class="hint">To change one person’s photo, click them on the chart and use the <b>Edit</b> tab.</div>
+        </div>
+      </section>
+
+      <!-- ============ EDIT ============ -->
+      <section class="tab" id="tab-edit">
+        <h2>Edit</h2><p class="lead">Click anything on the chart to change it.</p>
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 3l14 8-6.2 1.6L10 19z"/></svg></span>Selection<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body"><div id="inspector"></div></div></details>
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M7 7l-4 5 4 5M17 7l4 5-4 5M7 7l5-4 5 4M7 17l5 4 5-4"/></svg></span>Moving things<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <label class="check"><input id="edit" type="checkbox" checked><span>Click and drag people to rearrange<br><span class="hint">Shift-click to select several · Shift-drag the background to box-select · arrow keys nudge (hold Shift for bigger steps).</span></span></label>
+          <label class="check"><input id="branchMove" type="checkbox" checked><span>Move a person with everything beyond them<br><span class="hint">Hold Alt while dragging to move just one card.</span></span></label>
+          <label class="f">Snap to grid</label>
+          <select id="snap"><option value="0">Off</option><option value="10">10</option><option value="25">25</option><option value="50">50</option></select>
+        </div></details>
+        <details class="sec" id="distribute" open><summary><span class="ic"><svg viewBox="0 0 24 24"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="8" r="2"/><circle cx="9" cy="17" r="2"/><circle cx="19" cy="18" r="2"/></svg></span>Distribute<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="row" style="margin-top:2px"><button id="distOrganic" class="alt">Distribute organically</button><button id="distUniform" class="alt">Distribute uniform</button></div>
+          <div class="hint"><b>Organically</b> scatters people along gently wobbling rings and gives a different shape every time. <b>Uniform</b> puts everyone on even rings. Either one overwrites any positions you moved and any branches or roots you bent. Undo brings them back.</div>
+        </div></details>
+      </section>
+
+      <!-- ============ DOWNLOAD ============ -->
+      <section class="tab" id="tab-export">
+        <h2>Download</h2><p class="lead">Take your poster away as a digital file.</p>
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6"/></svg></span>Paper size<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <select id="paper"></select>
+          <div id="info"></div>
+        </div></details>
+        <details class="sec" open><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M4 20h16"/></svg></span>Files<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <label class="f" style="margin-top:2px">Picture (PNG)</label>
+          <div class="row" style="margin-top:0"><select id="pngSize" style="flex:1"><option value="3000">Standard · 3,000 px wide</option><option value="6000">Large · 6,000 px wide</option><option value="10000">Huge · 10,000 px wide</option></select><button id="png">PNG</button></div>
+          <div class="row"><button id="print" class="alt" style="flex:1">PDF</button><button id="dl" class="alt" style="flex:1">SVG</button></div>
+          <div class="hint">The PDF and SVG stay sharp at any size. For the PDF, choose <b>Save as PDF</b> in the print dialog.</div>
+        </div></details>
+        <details class="sec"><summary><span class="ic"><svg viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/></svg></span>Your project<svg class="chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg></summary><div class="body">
+          <div class="hint">A project file holds your family data, layout, colours and photos, so you can carry on later or on another computer. Your work is also saved automatically in this browser.</div>
+          <div class="row"><button id="save" class="alt">Save project</button><button id="open" class="alt">Open project…</button><input id="proj" type="file" accept=".json,application/json" hidden></div>
+        </div></details>
+      </section>
+      <div id="stepnav"><div class="hintline" id="stepHint" hidden></div><button id="stepBack" class="alt" hidden>← Back</button><button id="stepNext">Next →</button></div>
+    </aside>
+
+    <main id="main">
+      <div id="stage"><div id="empty">
+        <h1>Turn your family tree into a poster</h1>
+        <p>Make a beautiful, print-ready family tree from a GEDCOM file in three steps. Free, and nothing leaves your computer.</p>
+        <ol class="how">
+          <li><span class="n">1</span><span><b>Add your family file</b>Drop a GEDCOM (<code>.ged</code>) here, or choose one on the left. Most family tree websites and programs can export one.</span></li>
+          <li><span class="n">2</span><span><b>Pick a style</b>A tree with branches and roots, or a classic chart. Choose colours, a title and a border, and add photos if you like.</span></li>
+          <li><span class="n">3</span><span><b>Download your poster</b>Save it as a sharp PNG, PDF or SVG, sized from A4 up to A0, ready for any printer.</span></li>
+        </ol>
+        <div class="cta"><button id="trySample">Try a sample family</button><button id="restore" class="alt" hidden>Restore my last session</button></div>
+        <div id="restoreNote" class="hint" style="text-align:center" hidden></div>
+        <details><summary>Where do I get a GEDCOM file?</summary><p>Look for <b>Export</b> or <b>Download GEDCOM</b> in your family tree website or software. Only the owner of a tree can usually export it.</p></details>
+        <div class="priv">🔒 Your file stays in your browser. Nothing is uploaded.</div>
+      </div></div>
+      <div id="toolbar" hidden>
+        <button id="undo" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button><button id="redo" title="Redo (Ctrl/Cmd+Shift+Z)">↷ Redo</button><button id="reset">Reset layout</button>
+        <div class="sep"></div>
+        <button id="zout" title="Zoom out">−</button><input id="zoom" type="range" min="3" max="200" value="20" aria-label="Zoom"><button id="zin" title="Zoom in">+</button><span id="zoomval">20%</span><button id="fit">Fit</button>
+        <div class="sep"></div>
+        <button id="help" title="Shortcuts and tips (?)" aria-label="Help">?</button>
+      </div>
+    </main>
+  </div>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<div id="sheet"></div>
+<div id="modal" hidden></div>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
